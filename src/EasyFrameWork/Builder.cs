@@ -14,6 +14,7 @@ using Easy.Modules.User.Service;
 using Easy.Mvc.Authorize;
 using Easy.Mvc.Plugin;
 using Easy.Mvc.RazorPages;
+using Easy.Mvc.StateProviders;
 using Easy.Mvc.ValueProvider;
 using Easy.Net;
 using Easy.Notification;
@@ -32,6 +33,7 @@ using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using System.Collections.Concurrent;
@@ -45,14 +47,14 @@ namespace Easy
     {
         public static void UseEasyFrameWork(this IServiceCollection services, IConfiguration configuration)
         {
-            services.TryAddEnumerable(ServiceDescriptor.Transient<IConfigureOptions<RazorViewEngineOptions>, PluginRazorViewEngineOptionsSetup>());
+            services.TryAddEnumerable(ServiceDescriptor.Singleton<IConfigureOptions<RazorViewEngineOptions>, PluginRazorViewEngineOptionsSetup>());
 
-            services.Replace(ServiceDescriptor.Transient<IControllerActivator, Mvc.Controllers.ServiceBasedControllerActivator>());
-            services.TryAddEnumerable(ServiceDescriptor.Transient<IActionDescriptorProvider, ActionDescriptorProvider>());
+            //services.Replace(ServiceDescriptor.Transient<IControllerActivator, Mvc.Controllers.ServiceBasedControllerActivator>());
+            //services.TryAddEnumerable(ServiceDescriptor.Transient<IActionDescriptorProvider, ActionDescriptorProvider>());
             services.TryAddSingleton<IPluginLoader, Loader>();
 
 
-            services.TryAddTransient<IAuthorizer, DefaultAuthorizer>();
+            services.TryAddScoped<IAuthorizer, DefaultAuthorizer>();
 
             services.TryAddTransient<ICookie, Cookie>();
             services.TryAddTransient<IUserService, UserService>();
@@ -77,14 +79,18 @@ namespace Easy
             services.AddTransient<IScriptExpressionEvaluator, ScriptExpressionEvaluator>();
             services.AddTransient<WebClient>();
 
-            services.AddSingleton<ICacheProvider, HostCacheProvider>();
-            services.AddTransient<ILocalize, Localize>();
+            services.AddSingleton<ICacheProvider, DefaultCacheProvider>();
+            services.AddScoped<ILocalize, Localize>();
 
             services.ConfigureCache<ScriptExpressionResult>();
             services.ConfigureCache<ConcurrentDictionary<string, ConcurrentDictionary<string, LanguageEntity>>>();
 
-            services.AddSingleton<IAuthorizationHandler, RolePolicyRequirementHandler>();
+            services.AddScoped<IAuthorizationHandler, RolePolicyRequirementHandler>();
             services.AddSingleton(HtmlEncoder.Create(UnicodeRanges.All));
+
+            services.ConfigureStateProvider<CurrentCustomerStateProvider>();
+            services.ConfigureStateProvider<CurrentUserStateProvider>();
+            services.ConfigureStateProvider<HostingEnvironmentStateProvider>();
 
             services.ConfigureMetaData<UserEntity, UserMetaData>();
             services.ConfigureMetaData<DataDictionaryEntity, DataDictionaryEntityMetaData>();
@@ -98,8 +104,6 @@ namespace Easy
             services.Configure<CultureOption>(configuration.GetSection("Culture"));
 
             services.AddDataProtection();
-
-            //services.AddDbContext<EasyDbContext>();
         }
 
         public static void ConfigureMetaData<TEntity, TMetaData>(this IServiceCollection service)
@@ -120,7 +124,7 @@ namespace Easy
             builder.UseMiddleware<PluginStaticFileMiddleware>();
             return builder;
         }
-        public static void UseFileLog(this ILoggerFactory loggerFactory, IHostingEnvironment env, IHttpContextAccessor httpContextAccessor)
+        public static void UseFileLog(this ILoggerFactory loggerFactory, IWebHostEnvironment env, IHttpContextAccessor httpContextAccessor)
         {
             loggerFactory.AddProvider(new FileLoggerProvider(env, httpContextAccessor));
         }

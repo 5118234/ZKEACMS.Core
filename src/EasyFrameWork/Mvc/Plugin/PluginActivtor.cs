@@ -1,4 +1,4 @@
-﻿/* http://www.zkea.net/ 
+/* http://www.zkea.net/ 
  * Copyright 2018 ZKEASOFT 
  * http://www.zkea.net/licenses */
 using Microsoft.AspNetCore.Builder;
@@ -23,7 +23,7 @@ namespace Easy.Mvc.Plugin
             }
             return serviceCollection;
         }
-        public static IApplicationBuilder ConfigurePlugin(this IApplicationBuilder applicationBuilder, IHostingEnvironment hostingEnvironment)
+        public static IApplicationBuilder ConfigurePlugin(this IApplicationBuilder applicationBuilder, IWebHostEnvironment hostingEnvironment)
         {
             foreach (var item in applicationBuilder.ApplicationServices.GetPlugins())
             {
@@ -37,6 +37,7 @@ namespace Easy.Mvc.Plugin
             {
                 var plugin = ActivatorUtilities.GetServiceOrCreateInstance(serviceProvider, item.PluginType) as IPluginStartup;
                 plugin.Assembly = item.Assembly;
+                plugin.Dependency = item.Dependency;
                 plugin.CurrentPluginPath = item.CurrentPluginPath;
                 yield return plugin;
             }

@@ -1,4 +1,4 @@
-﻿/* http://www.zkea.net/ 
+/* http://www.zkea.net/ 
  * Copyright 2018 ZKEASOFT 
  * http://www.zkea.net/licenses */
 using CacheManager.Core;
@@ -26,9 +26,14 @@ namespace Easy.Cache
                    }));
              });
         }
-        public string Key(string key)
+        public virtual string Key(string key)
         {
-            return $"{_httpContextAccessor.HttpContext.Request.Host.Value}-{key}";
+            string host = _httpContextAccessor.HttpContext.Request.Host.Value.ToLowerInvariant();
+            if (host.StartsWith("www."))
+            {
+                return $"{host.Substring(4)}-{key}";
+            }
+            return $"{host}-{key}";
         }
     }
 }

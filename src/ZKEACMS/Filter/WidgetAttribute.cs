@@ -5,6 +5,7 @@
 using Easy.Extend;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ActionConstraints;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Net.Http.Headers;
@@ -17,28 +18,31 @@ using ZKEACMS.Rule;
 using ZKEACMS.Setting;
 using ZKEACMS.Theme;
 using ZKEACMS.Widget;
+using ZKEACMS;
+using System.IO;
+using Microsoft.AspNetCore.Hosting;
 
 namespace ZKEACMS.Filter
 {
-    public class WidgetAttribute : ActionFilterAttribute, IActionFilter
+    public class WidgetAttribute : ActionFilterAttribute, IActionFilter, IActionConstraint
     {
-
+        private const string UnknownZone = "UnknownZone";
         public virtual PageEntity GetPage(ActionExecutedContext filterContext)
         {
             string path = filterContext.RouteData.GetPath();
             bool isPreView = IsPreView(filterContext);
             using (var pageService = filterContext.HttpContext.RequestServices.GetService<IPageService>())
             {
-                if (!filterContext.HttpContext.User.Identity.IsAuthenticated && !isPreView && GetPageViewMode() == PageViewMode.Publish)
-                {
-                    filterContext.HttpContext.Response.GetTypedHeaders().CacheControl = new CacheControlHeaderValue()
-                    {
-                        Public = true,
-                        MaxAge = TimeSpan.FromHours(1)
-                    };
-                    //filterContext.HttpContext.Response.Headers[HeaderNames.Vary] = new string[] { "Accept-Encoding" };
-                }
-                else if (isPreView)
+                //if (!filterContext.HttpContext.User.Identity.IsAuthenticated && !isPreView && GetPageViewMode() == PageViewMode.Publish)
+                //{
+                //    filterContext.HttpContext.Response.GetTypedHeaders().CacheControl = new CacheControlHeaderValue()
+                //    {
+                //        Public = true,
+                //        MaxAge = TimeSpan.FromHours(1)
+                //    };
+                //    //filterContext.HttpContext.Response.Headers[HeaderNames.Vary] = new string[] { "Accept-Encoding" };
+                //}
+                if (isPreView)
                 {
                     filterContext.HttpContext.Response.GetTypedHeaders().CacheControl = new CacheControlHeaderValue()
                     {
@@ -50,7 +54,7 @@ namespace ZKEACMS.Filter
             }
 
         }
-        private bool IsPreView(ActionExecutedContext filterContext)
+        private bool IsPreView(FilterContext filterContext)
         {
             bool isPreView = false;
             if (filterContext.HttpContext.User.Identity.IsAuthenticated)
@@ -61,9 +65,9 @@ namespace ZKEACMS.Filter
             }
             return isPreView;
         }
-        public virtual string GetLayout()
+        public virtual string GetLayout(ActionExecutedContext filterContext, ThemeEntity theme)
         {
-            return "~/Views/Shared/_Layout.cshtml";
+            return Layouts.Default;
         }
         public virtual PageViewMode GetPageViewMode()
         {
@@ -75,9 +79,8 @@ namespace ZKEACMS.Filter
             var page = GetPage(filterContext);
             if (page != null)
             {
-
                 var requestServices = filterContext.HttpContext.RequestServices;
-                var onPageExecuteds = requestServices.GetServices<IOnPageExecuted>();
+                var eventManager = requestServices.GetService<IEventManager>();
                 var layoutService = requestServices.GetService<ILayoutService>();
                 var widgetService = requestServices.GetService<IWidgetBasePartService>();
                 var applicationSettingService = requestServices.GetService<IApplicationSettingService>();
@@ -103,21 +106,22 @@ namespace ZKEACMS.Filter
                             WidgetViewModelPart part = partDriver.Display(widget, filterContext);
                             if (part != null)
                             {
-                                if (layout.ZoneWidgets.ContainsKey(part.Widget.ZoneID))
+                                if (layout.ZoneWidgets.ContainsKey(part.Widget.ZoneID ?? UnknownZone))
                                 {
-                                    layout.ZoneWidgets[part.Widget.ZoneID].TryAdd(part);
+                                    layout.ZoneWidgets[part.Widget.ZoneID ?? UnknownZone].TryAdd(part);
                                 }
                                 else
                                 {
-                                    layout.ZoneWidgets.Add(part.Widget.ZoneID, new WidgetCollection { part });
+                                    layout.ZoneWidgets.Add(part.Widget.ZoneID ?? UnknownZone, new WidgetCollection { part });
                                 }
                             }
                             partDriver.Dispose();
                         }
                     });
+
                 var ruleWorkContext = new RuleWorkContext
                 {
-                    Url = filterContext.HttpContext.Request.Path.Value,
+                    Url = (filterContext.Controller as Controller).Url.Content(page.Url),
                     QueryString = filterContext.HttpContext.Request.QueryString.ToString(),
                     UserAgent = filterContext.HttpContext.Request.Headers["User-Agent"]
                 };
@@ -135,13 +139,13 @@ namespace ZKEACMS.Filter
                             if (part != null && zone != null)
                             {
                                 part.Widget.ZoneID = zone.HeadingCode;
-                                if (layout.ZoneWidgets.ContainsKey(part.Widget.ZoneID))
+                                if (layout.ZoneWidgets.ContainsKey(part.Widget.ZoneID ?? UnknownZone))
                                 {
-                                    layout.ZoneWidgets[part.Widget.ZoneID].TryAdd(part);
+                                    layout.ZoneWidgets[part.Widget.ZoneID ?? UnknownZone].TryAdd(part);
                                 }
                                 else
                                 {
-                                    layout.ZoneWidgets.Add(part.Widget.ZoneID, new WidgetCollection { part });
+                                    layout.ZoneWidgets.Add(part.Widget.ZoneID ?? UnknownZone, new WidgetCollection { part });
                                 }
 
                             }
@@ -152,16 +156,16 @@ namespace ZKEACMS.Filter
                 var viewResult = (filterContext.Result as ViewResult);
                 if (viewResult != null)
                 {
-                    layout.Layout = GetLayout();
+                    layout.Layout = GetLayout(filterContext, layout.CurrentTheme);
                     if (GetPageViewMode() == PageViewMode.Design)
                     {
                         layout.Templates = widgetService.Get(m => m.IsTemplate == true);
                     }
                     (filterContext.Controller as Controller).ViewData.Model = layout;
                 }
-                if (page.IsPublishedPage && onPageExecuteds != null)
+                if (page.IsPublishedPage)
                 {
-                    onPageExecuteds.Each(m => m.OnExecuted(page, filterContext.HttpContext));
+                    eventManager.Trigger(Events.OnPageExecuted, page);
                 }
 
                 layoutService.Dispose();
@@ -192,14 +196,22 @@ namespace ZKEACMS.Filter
             var applicationContext = filterContext.HttpContext.RequestServices.GetService<IApplicationContextAccessor>();
             if (applicationContext != null)
             {
-                applicationContext.Current.PageMode = GetPageViewMode();
-                //applicationContext.RequestUrl = new Uri(filterContext.HttpContext.Request.Path.ToUriComponent());
+                if (IsPreView(filterContext))
+                {
+                    applicationContext.Current.PageMode = PageViewMode.PreView;
+                }
+                else
+                {
+                    applicationContext.Current.PageMode = GetPageViewMode();
+                }
             }
-            var _onPageExecutings = filterContext.HttpContext.RequestServices.GetServices<IOnPageExecuting>();
-            if (_onPageExecutings != null)
-            {
-                _onPageExecutings.Each(m => m.OnExecuting(filterContext.HttpContext));
-            }
+            var eventManager = filterContext.HttpContext.RequestServices.GetService<IEventManager>();
+            eventManager.Trigger(Events.OnPageExecuting, filterContext);
+        }
+
+        public bool Accept(ActionConstraintContext context)
+        {
+            return context.Candidates.Count == 1;
         }
     }
 

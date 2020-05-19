@@ -12,18 +12,42 @@ using ZKEACMS.Widget;
 using Microsoft.AspNetCore.Mvc;
 using System.Linq;
 using Easy.Extend;
+using System.Collections.Concurrent;
+using Easy.Cache;
 
 namespace ZKEACMS.Article.Service
 {
     public class ArticleDetailWidgetService : WidgetService<ArticleDetailWidget>
     {
+        private const string ArticleDetailWidgetRelatedPageUrls = "ArticleDetailWidgetRelatedPageUrls";
         private readonly IArticleService _articleService;
-        public ArticleDetailWidgetService(IWidgetBasePartService widgetService, IArticleService articleService, IApplicationContext applicationContext, CMSDbContext dbContext)
+        private readonly ConcurrentDictionary<string, object> _allRelatedUrlCache;
+        public ArticleDetailWidgetService(IWidgetBasePartService widgetService,
+            IArticleService articleService,
+            IApplicationContext applicationContext,
+            ICacheManager<ConcurrentDictionary<string, object>> cacheManager,
+            CMSDbContext dbContext)
             : base(widgetService, applicationContext, dbContext)
         {
             _articleService = articleService;
+            _allRelatedUrlCache = cacheManager.GetOrAdd(ArticleDetailWidgetRelatedPageUrls, new ConcurrentDictionary<string, object>());
+        }
+        private void DismissRelatedPageUrls()
+        {
+            _allRelatedUrlCache.TryRemove(ArticleDetailWidgetRelatedPageUrls, out var urls);
         }
 
+        public override void AddWidget(WidgetBase widget)
+        {
+            base.AddWidget(widget);
+            DismissRelatedPageUrls();
+        }
+
+        public override void DeleteWidget(string widgetId)
+        {
+            base.DeleteWidget(widgetId);
+            DismissRelatedPageUrls();
+        }
 
         public override WidgetViewModelPart Display(WidgetBase widget, ActionContext actionContext)
         {
@@ -31,7 +55,7 @@ namespace ZKEACMS.Article.Service
             var viewModel = new ArticleDetailViewModel();
             if (articleId != 0)
             {
-                viewModel.Current = _articleService.Get(articleId);
+                viewModel.Current = actionContext.RouteData.GetArticle(articleId) ?? _articleService.Get(articleId);
                 if (viewModel.Current != null)
                 {
                     _articleService.IncreaseCount(viewModel.Current);
@@ -67,6 +91,15 @@ namespace ZKEACMS.Article.Service
 
 
             return widget.ToWidgetViewModelPart(viewModel);
+        }
+
+        public string[] GetRelatedPageUrls()
+        {
+            return _allRelatedUrlCache.GetOrAdd(ArticleDetailWidgetRelatedPageUrls, fac =>
+            {
+                var pages = WidgetBasePartService.Get(w => Get().Select(m => m.ID).Contains(w.ID)).Select(m => m.PageID).ToArray();
+                return DbContext.Page.Where(p => pages.Contains(p.ID)).Select(m => m.Url.Replace("~/", "/")).Distinct().ToArray();
+            }) as string[];
         }
     }
 }

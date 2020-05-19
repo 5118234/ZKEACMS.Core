@@ -1,10 +1,11 @@
-﻿/*!
+/*!
  * http://www.zkea.net/
  * Copyright 2017 ZKEASOFT
  * http://www.zkea.net/licenses
  */
 using Easy.MetaData;
 using Easy.Models;
+using Easy.RepositoryPattern;
 using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
@@ -14,7 +15,7 @@ using System.Threading.Tasks;
 
 namespace ZKEACMS.Shop.Models
 {
-    [Table("Order")]
+    [DataTable("Order")]
     public class Order : EditorEntity
     {
         [Key]
@@ -41,15 +42,15 @@ namespace ZKEACMS.Shop.Models
         {
             switch ((Shop.OrderStatus)OrderStatus)
             {
-                case Shop.OrderStatus.Cancel: return "已取消";
-                case Shop.OrderStatus.Complete: return "完成";
-                case Shop.OrderStatus.Paid: return "已付款";
-                case Shop.OrderStatus.Refund: return "已退款";
-                case Shop.OrderStatus.Shiped: return "已发货";
-                case Shop.OrderStatus.UnPaid: return "未支付";
-                case Shop.OrderStatus.Refunding: return "退款中";
+                case Shop.OrderStatus.Cancel: return "Cancel";
+                case Shop.OrderStatus.Complete: return "Complete";
+                case Shop.OrderStatus.Paid: return "Paid";
+                case Shop.OrderStatus.Refund: return "Refund";
+                case Shop.OrderStatus.Shiped: return "Shiped";
+                case Shop.OrderStatus.UnPaid: return "UnPaid";
+                case Shop.OrderStatus.Refunding: return "Refunding";
             }
-            return "完成";
+            return "Complete";
         }
     }
     class OrderMetaData : ViewMetaData<Order>

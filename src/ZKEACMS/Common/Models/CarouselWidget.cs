@@ -11,10 +11,11 @@ using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.DependencyInjection;
 using Easy.Constant;
+using Easy.RepositoryPattern;
 
 namespace ZKEACMS.Common.Models
 {
-    [Table("CarouselWidget")]
+    [DataTable("CarouselWidget")]
     public class CarouselWidget : BasicWidget
     {
         public CarouselWidget()
@@ -33,7 +34,7 @@ namespace ZKEACMS.Common.Models
             ViewConfig(m => m.ID).AsHidden();
             ViewConfig(m => m.CarouselID).AsDropDownList().Order(NextOrder()).DataSource(() =>
             {
-                var result = new Dictionary<string, string> { { "", "---请选择---" } };
+                var result = new Dictionary<string, string> { { "", "--- Select ---" } };
                 using (var carouselService = ServiceLocator.GetService<ICarouselService>())
                 {
                     carouselService.Get().Each(m => result.Add(m.ID.ToString(), m.Title));

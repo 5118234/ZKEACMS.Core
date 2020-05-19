@@ -30,31 +30,29 @@ namespace Easy.ViewPort.Descriptor
                 ILocalize localize = ServiceLocator.GetService<ILocalize>();
                 if (_souceFunc != null)
                 {
-                    _data = new Dictionary<string, string>();
+                    Dictionary<string, string> data = new Dictionary<string, string>();
                     foreach (var item in _souceFunc.Invoke())
                     {
-                        if (!_data.ContainsKey(item.Key))
+                        if (!data.ContainsKey(item.Key))
                         {
-                            _data.Add(item.Key, localize.Get(item.Value));
+                            data.Add(item.Key, localize.Get(item.Value));
                         }
                     }
+                    return data;
                 }
                 if (this.SourceType == SourceType.Dictionary)
                 {
                     IDataDictionaryService dicService = ServiceLocator.GetService<IDataDictionaryService>();
-                    if (dicService != null)
+                    Dictionary<string, string> data = new Dictionary<string, string>();
+                    var dicts = dicService.Get(m => m.DicName == this.SourceKey);
+                    foreach (DataDictionaryEntity item in dicts)
                     {
-                        _data = new Dictionary<string, string>();
-
-                        var dicts = dicService.Get(m => m.DicName == this.SourceKey);
-                        foreach (DataDictionaryEntity item in dicts)
+                        if (!data.ContainsKey(item.DicValue))
                         {
-                            if (!_data.ContainsKey(item.DicValue))
-                            {
-                                _data.Add(item.DicValue, localize.Get(item.Title));
-                            }
+                            data.Add(item.DicValue, localize.Get(item.Title));
                         }
                     }
+                    return data;
 
                 }
                 return _data ?? new Dictionary<string, string>();
@@ -96,7 +94,7 @@ namespace Easy.ViewPort.Descriptor
             Type dataType = typeof(T);
             if (!dataType.GetTypeInfo().IsEnum)
             {
-                throw new Exception(dataType.FullName + ",不是枚举类型。");
+                throw new Exception(dataType.FullName + " is not Enum type");
             }
             string[] text = Enum.GetNames(dataType);
             ILocalize localize = ServiceLocator.GetService<ILocalize>();

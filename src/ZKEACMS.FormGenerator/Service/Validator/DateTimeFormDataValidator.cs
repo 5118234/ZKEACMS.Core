@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -23,7 +23,7 @@ namespace ZKEACMS.FormGenerator.Service.Validator
             DateTime dateTime;
             if (field.Name == "Date" && data.FieldValue.IsNotNullAndWhiteSpace() && !DateTime.TryParse(data.FieldValue, out dateTime))
             {
-                message = _localize.Get("{0}的日期格式不正确").FormatWith(field.DisplayName);
+                message = _localize.Get("Invalid date value for {0}.").FormatWith(field.DisplayName);
                 return false;
             }
             return true;

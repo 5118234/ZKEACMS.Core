@@ -1,4 +1,4 @@
-﻿/*!
+/*!
  * http://www.zkea.net/
  * Copyright 2018 ZKEASOFT
  * http://www.zkea.net/licenses
@@ -14,15 +14,21 @@ using ZKEACMS.Setting;
 
 namespace ZKEACMS.Message.Service
 {
-    public class MessageService : ServiceBase<MessageEntity>, IMessageService
+    public class MessageService : ServiceBase<MessageEntity, CMSDbContext>, IMessageService
     {
         private readonly INotificationManager _notificationManager;
         private readonly IApplicationSettingService _applicationSettingService;
-        public MessageService(IApplicationContext applicationContext, INotificationManager notificationManager, IApplicationSettingService applicationSettingService, CMSDbContext dbContext)
+        private readonly ILocalize _localize;
+        public MessageService(IApplicationContext applicationContext, 
+            INotificationManager notificationManager, 
+            IApplicationSettingService applicationSettingService,
+            ILocalize localize,
+            CMSDbContext dbContext)
             : base(applicationContext, dbContext)
         {
             _notificationManager = notificationManager;
             _applicationSettingService = applicationSettingService;
+            _localize = localize;
         }
         public override ServiceResult<MessageEntity> Add(MessageEntity item)
         {
@@ -32,7 +38,7 @@ namespace ZKEACMS.Message.Service
             {
                 _notificationManager.Send(new RazorEmailNotice
                 {
-                    Subject = "新的留言提醒",
+                    Subject = _localize.Get("New message"),
                     To = notifyConfig.MessageNotifyEmails.Split(new char[] { '\r', '\n', ',', ';' }, StringSplitOptions.RemoveEmptyEntries),
                     Model = item,
                     TemplatePath = "~/wwwroot/Plugins/ZKEACMS.Message/EmailTemplates/MessageNotification.cshtml"

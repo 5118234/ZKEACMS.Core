@@ -1,4 +1,4 @@
-﻿/* http://www.zkea.net/ 
+/* http://www.zkea.net/ 
  * Copyright 2018 ZKEASOFT 
  * http://www.zkea.net/licenses */
 using Microsoft.AspNetCore.Hosting;
@@ -19,9 +19,9 @@ namespace Easy.Logging
         public const string Split = "----------------------------------------------------------------";
         public const string FileTemplate = "{0}.log";
         public const string DateNameTemplate = "yyyy-MM-dd";
-        private readonly IHostingEnvironment _hostingEnvironment;
+        private readonly IWebHostEnvironment _hostingEnvironment;
         private readonly IHttpContextAccessor _httpContextAccessor;
-        public FileLogger(IHostingEnvironment hostingEnvironment, IHttpContextAccessor httpContextAccessor)
+        public FileLogger(IWebHostEnvironment hostingEnvironment, IHttpContextAccessor httpContextAccessor)
         {
             _hostingEnvironment = hostingEnvironment;
             _httpContextAccessor = httpContextAccessor;
@@ -37,6 +37,7 @@ namespace Easy.Logging
                 writer.WriteLine(string.Format(TitleTemplate, DateTime.Now.ToString("G")) + msg);
                 if (_httpContextAccessor.HttpContext != null && _httpContextAccessor.HttpContext.Request != null)
                 {
+                    writer.WriteLine("Method:{0}", _httpContextAccessor.HttpContext.Request.Method);
                     if (_httpContextAccessor.HttpContext.Request.Headers != null)
                     {
                         writer.WriteLine("Headers:");
@@ -45,7 +46,7 @@ namespace Easy.Logging
                             writer.WriteLine($"{item.Key}:{item.Value}");
                         }
                     }
-                    
+
                     writer.WriteLine(_httpContextAccessor.HttpContext.Request.GetAbsoluteUrl());
                 }
                 writer.WriteLine(Split);
@@ -79,9 +80,16 @@ namespace Easy.Logging
 
         public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
         {
-            if (IsEnabled(logLevel) && exception != null)
+            if (IsEnabled(logLevel))
             {
-                WriteInfo(exception.ToString());
+                if (exception == null)
+                {
+                    WriteInfo(formatter(state, exception));
+                }
+                else
+                {
+                    WriteInfo(exception.ToString());
+                }
             }
         }
     }

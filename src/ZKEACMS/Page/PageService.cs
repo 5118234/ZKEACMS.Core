@@ -1,4 +1,4 @@
-﻿/* http://www.zkea.net/ 
+/* http://www.zkea.net/ 
  * Copyright 2018 ZKEASOFT 
  * http://www.zkea.net/licenses 
  */
@@ -18,24 +18,31 @@ using Microsoft.EntityFrameworkCore;
 using ZKEACMS.Zone;
 using ZKEACMS.Layout;
 using Microsoft.AspNetCore.Http;
+using Newtonsoft.Json;
+using ZKEACMS.Extend;
+using ZKEACMS.Event;
 
 namespace ZKEACMS.Page
 {
-    public class PageService : ServiceBase<PageEntity>, IPageService
+    public class PageService : ServiceBase<PageEntity, CMSDbContext>, IPageService
     {
         private readonly IWidgetBasePartService _widgetService;
         private readonly IHttpContextAccessor _httpContextAccessor;
         private readonly IWidgetActivator _widgetActivator;
         private readonly IZoneService _zoneService;
         private readonly ILayoutHtmlService _layoutHtmlService;
-
+        private readonly IEventManager _eventManager;
+        private readonly ILocalize _localize;
+        private Dictionary<string, IEnumerable<PageEntity>> _cachedPage;
         public PageService(IWidgetBasePartService widgetService,
             IApplicationContext applicationContext,
             IHttpContextAccessor httpContextAccessor,
             IWidgetActivator widgetActivator,
             IZoneService zoneService,
             ILayoutHtmlService layoutHtmlService,
-            CMSDbContext dbContext)
+            ILocalize localize,
+            CMSDbContext dbContext,
+            IEventManager eventManager)
             : base(applicationContext, dbContext)
         {
             _widgetService = widgetService;
@@ -43,18 +50,87 @@ namespace ZKEACMS.Page
             _widgetActivator = widgetActivator;
             _zoneService = zoneService;
             _layoutHtmlService = layoutHtmlService;
+            _eventManager = eventManager;
+            _localize = localize;
+            _cachedPage = new Dictionary<string, IEnumerable<PageEntity>>();
+        }
+
+        private string FormatPath(string path)
+        {
+            if (path != "/" && path.EndsWith("/"))
+            {
+                path = path.Substring(0, path.Length - 1);
+            }
+            if (path == "/")
+            {
+                path = "~/index";
+            }
+            else
+            {
+                path = $"~{path}";
+            }
+            return path;
+        }
+        private void InitAssets(PageEntity page)
+        {
+            if (page != null)
+            {
+                if (page.Style.IsNotNullAndWhiteSpace())
+                {
+                    if (page.Style.StartsWith("["))
+                    {
+                        foreach (var item in JsonConvert.DeserializeObject<string[]>(page.Style))
+                        {
+                            page.Styles.Add(new PageAsset { Url = item });
+                        }
+                    }
+                    else
+                    {
+                        page.Styles.Add(new PageAsset { Url = page.Style });
+                    }
+                }
+                if (page.Script.IsNotNullAndWhiteSpace())
+                {
+                    if (page.Script.StartsWith("["))
+                    {
+                        foreach (var item in JsonConvert.DeserializeObject<string[]>(page.Script))
+                        {
+                            page.Scripts.Add(new PageAsset { Url = item });
+                        }
+                    }
+                    else
+                    {
+                        page.Scripts.Add(new PageAsset { Url = page.Script });
+                    }
+                }
+            }
+        }
+        private void SerializeAssets(PageEntity page)
+        {
+            if (page != null)
+            {
+                page.Style = JsonConvert.SerializeObject(page.Styles.RemoveDeletedItems().Select(m => m.Url));
+                page.Script = JsonConvert.SerializeObject(page.Scripts.RemoveDeletedItems().Select(m => m.Url));
+            }
         }
 
         public override DbSet<PageEntity> CurrentDbSet
         {
-            get { return (DbContext as CMSDbContext).Page; }
+            get { return DbContext.Page; }
         }
-        
+
+        public override PageEntity Get(params object[] primaryKey)
+        {
+            PageEntity page = base.Get(primaryKey);
+            InitAssets(page);
+            return page;
+        }
+
         public override ServiceResult<PageEntity> Add(PageEntity item)
         {
             if (!item.IsPublishedPage && Count(m => m.Url == item.Url && m.IsPublishedPage == false) > 0)
             {
-                throw new PageExistException(item);
+                throw new PageExistException(_localize);
             }
             item.ID = Guid.NewGuid().ToString("N");
             if (item.ParentId.IsNullOrEmpty())
@@ -68,14 +144,16 @@ namespace ZKEACMS.Page
         {
             if (Count(m => m.ID != item.ID && m.Url == item.Url && m.IsPublishedPage == false) > 0)
             {
-                throw new PageExistException(item);
+                throw new PageExistException(_localize);
             }
             item.IsPublish = false;
+            SerializeAssets(item);
             return base.Update(item);
         }
 
         public void Publish(PageEntity item)
         {
+            _eventManager.Trigger(Events.OnPagePublishing, item);
             string pageId = item.ID;
             BeginTransaction(() =>
             {
@@ -126,6 +204,7 @@ namespace ZKEACMS.Page
             _widgetService.RemoveCache(pageId);
             _zoneService.RemoveCache(pageId);
             _layoutHtmlService.RemoveCache(pageId);
+            _eventManager.Trigger(Events.OnPagePublished, item);
         }
         public void Revert(string ID, bool RetainLatest)
         {
@@ -137,7 +216,7 @@ namespace ZKEACMS.Page
                     var refPage = Get(page.ReferencePageID);
                     refPage.IsPublish = false;
                     Update(refPage);
-                    page.Description = "从 {0:yyyy/MM/dd H:mm} 版本撤回".FormatWith(page.PublishDate);
+                    page.Description = _localize.Get("Revert from version: {0:g}").FormatWith(page.PublishDate);
                     page.PublishDate = DateTime.Now;
                     Add(page);
 
@@ -298,24 +377,19 @@ namespace ZKEACMS.Page
         }
         public PageEntity GetByPath(string path, bool isPreView)
         {
-            if (path != "/" && path.EndsWith("/"))
+            string formatedPath = FormatPath(path);
+            if (_cachedPage.ContainsKey(formatedPath))
             {
-                path = path.Substring(0, path.Length - 1);
-            }
-            if (path == "/")
-            {
-                path = "~/index";
-            }
-            else
-            {
-                path = $"~{path}";
-            }
-
-
-            return Get()
-                      .Where(m => m.Url == path && m.IsPublishedPage == !isPreView)
+                return _cachedPage[formatedPath].Where(m => m.Url.Equals(formatedPath, StringComparison.OrdinalIgnoreCase) && m.IsPublishedPage == !isPreView)
                       .OrderByDescending(m => m.PublishDate)
                       .FirstOrDefault();
+            }
+            PageEntity page = Get()
+                      .Where(m => m.Url == formatedPath && m.IsPublishedPage == !isPreView)
+                      .OrderByDescending(m => m.PublishDate)
+                      .FirstOrDefault();
+            InitAssets(page);
+            return page;
         }
 
         public void MarkChanged(string pageId)
@@ -332,6 +406,17 @@ namespace ZKEACMS.Page
                 }
                 base.Update(pageEntity);
             }
+        }
+
+        public bool IsExists(string path)
+        {
+            string formatedPath = FormatPath(path);
+            var pages = Get(m => m.Url == formatedPath);
+            if (pages.Any() && !_cachedPage.ContainsKey(path))
+            {
+                _cachedPage.Add(formatedPath, pages);
+            }
+            return pages.Any();
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -22,7 +22,7 @@ namespace ZKEACMS.FormGenerator.Service.Validator
             message = string.Empty;
             if (field.Name == "Email" && data.FieldValue.IsNotNullAndWhiteSpace() && !Regex.IsMatch(data.FieldValue, RegularExpression.Email))
             {
-                message = _localize.Get("{0}的邮件格式不正确").FormatWith(field.DisplayName);
+                message = _localize.Get("Invalid Email for {0}.").FormatWith(field.DisplayName);
                 return false;
             }
             return true;
